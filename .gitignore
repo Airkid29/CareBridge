@@ -12,6 +12,7 @@ __pycache__/
 env/
 .venv
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -57,3 +58,6 @@ htmlcov/
 # Misc
 *.log
 dist
+
+# Local user store (password hashes)
+backend/data/users.json

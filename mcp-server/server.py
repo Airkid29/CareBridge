@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 import requests
-from anthropic import Anthropic
+import google.generativeai as genai
 from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -12,8 +12,9 @@ from mcp import types
 # Load environment variables from .env file
 load_dotenv()
 
-# Initialize Claude
-client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+# Initialize Gemini
+genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+model = genai.GenerativeModel('gemini-2.0-flash')
 
 # Initialize MCP Server
 app = Server('carebridge-mcp')
@@ -58,7 +59,6 @@ def _extract_json_payload(raw_text: str) -> str:
 def _call_gemini(prompt: str) -> tuple[str, str]:
     if not os.getenv('GEMINI_API_KEY'):
         raise RuntimeError('GEMINI_API_KEY is missing')
-    model = genai.GenerativeModel(GEMINI_MODEL)
     response = model.generate_content(prompt)
     text = response.text if hasattr(response, 'text') else ''
     if not text:
@@ -66,54 +66,12 @@ def _call_gemini(prompt: str) -> tuple[str, str]:
     return _extract_json_payload(text), 'gemini'
 
 
-def _call_deepseek(prompt: str) -> tuple[str, str]:
-    api_key = os.getenv('DEEPSEEK_API_KEY')
-    if not api_key:
-        raise RuntimeError('DEEPSEEK_API_KEY is missing')
-
-    response = requests.post(
-        DEEPSEEK_API_URL,
-        headers={
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json',
-        },
-        json={
-            'model': DEEPSEEK_MODEL,
-            'messages': [{'role': 'user', 'content': prompt}],
-            'temperature': 0.2,
-            'max_tokens': 1200,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    content = payload['choices'][0]['message']['content']
-    if not content:
-        raise RuntimeError('DeepSeek returned empty content')
-    return _extract_json_payload(content), 'deepseek'
-
-
-async def _first_provider_response(prompt: str) -> tuple[str, str]:
-    tasks = [
-        asyncio.create_task(asyncio.to_thread(_call_gemini, prompt)),
-        asyncio.create_task(asyncio.to_thread(_call_deepseek, prompt)),
-    ]
-    errors = []
-
+async def _get_gemini_response(prompt: str) -> tuple[str, str]:
+    """Single provider - Gemini only"""
     try:
-        while tasks:
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            tasks = list(pending)
-
-            for finished in done:
-                try:
-                    return await finished
-                except Exception as err:
-                    errors.append(str(err))
-        raise RuntimeError('All providers failed: ' + ' | '.join(errors))
-    finally:
-        for task in tasks:
-            task.cancel()
+        return await asyncio.to_thread(_call_gemini, prompt)
+    except Exception as err:
+        raise RuntimeError(f'Gemini API failed: {str(err)}')
 
 @app.list_tools()
 async def list_tools():
@@ -206,7 +164,7 @@ PATIENT:
 {json.dumps(DEMO_PATIENT, indent=2)}
 """
         try:
-            raw_text, provider = await _first_provider_response(prompt)
+            raw_text, provider = await _get_gemini_response(prompt)
             result = json.loads(raw_text)
             result['llm_provider'] = provider
             return [types.TextContent(type='text', text=json.dumps(result, indent=2))]
@@ -265,7 +223,7 @@ PATIENT:
 {json.dumps(DEMO_PATIENT, indent=2)}
 """
         try:
-            raw_text, provider = await _first_provider_response(prompt)
+            raw_text, provider = await _get_gemini_response(prompt)
             result = json.loads(raw_text)
             result['llm_provider'] = provider
             return [types.TextContent(type='text', text=json.dumps(result, indent=2))]
@@ -293,7 +251,7 @@ Keep it short, clear, and actionable:
 {clinical_plan}
 """
         try:
-            text, provider = await _first_provider_response(prompt)
+            text, provider = await _get_gemini_response(prompt)
             return [types.TextContent(type='text', text=f"[{provider}]\n{text}")]
         except Exception as err:
             return [types.TextContent(type='text', text=f"Take medicines as prescribed, schedule follow-ups, and seek emergency care for bleeding, chest pain, or severe breathing issues. (fallback: {err})")]

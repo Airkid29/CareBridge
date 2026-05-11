@@ -1,0 +1,16 @@
+# ---- Backend Dockerfile ----
+FROM python:3.12-slim
+WORKDIR /app
+
+# Install dépendances
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code source
+COPY backend/ .
+
+# Exposer le port (Render définit la variable d'environnement PORT)
+EXPOSE 8000
+
+# Lancer l'application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

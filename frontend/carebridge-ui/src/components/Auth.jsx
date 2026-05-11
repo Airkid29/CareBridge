@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import axios from 'axios'
-
-const API = 'http://localhost:8000'
+import BrandLogo from './BrandLogo'
+import { API_BASE_URL } from '../apiConfig'
 
 export default function Auth({ onLogin }) {
   const [isLogin, setIsLogin] = useState(true)
@@ -28,19 +28,44 @@ export default function Auth({ onLogin }) {
 
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/register'
+      const email = formData.email.trim().toLowerCase()
       const payload = isLogin
-        ? { email: formData.email, password: formData.password }
-        : formData
+        ? { email, password: formData.password }
+        : {
+            email,
+            password: formData.password,
+            name: formData.name.trim(),
+            role: formData.role,
+          }
 
-      const response = await axios.post(`${API}${endpoint}`, payload)
-      
-      if (response.data.success) {
+      const response = await axios.post(`${API_BASE_URL}${endpoint}`, payload)
+
+      if (response.data?.success && response.data?.token && response.data?.user) {
         localStorage.setItem('carebridge-token', response.data.token)
         localStorage.setItem('carebridge-user', JSON.stringify(response.data.user))
         onLogin(response.data.user, response.data.token)
+      } else {
+        setError('Unexpected response from server')
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Authentication failed')
+      const detail = err.response?.data?.detail
+      if (Array.isArray(detail)) {
+        setError(
+          detail
+            .map((item) => (typeof item === 'string' ? item : item.msg || JSON.stringify(item)))
+            .join(' · ') || 'Invalid form data',
+        )
+      } else if (typeof detail === 'string') {
+        setError(detail)
+      } else if (detail && typeof detail === 'object') {
+        setError(detail.message || JSON.stringify(detail))
+      } else if (!err.response) {
+        setError(
+          `Cannot reach the API at ${API_BASE_URL}. Start the backend (uvicorn) and check REACT_APP_API_URL if needed.`,
+        )
+      } else {
+        setError('Authentication failed')
+      }
     } finally {
       setLoading(false)
     }
@@ -51,7 +76,11 @@ export default function Auth({ onLogin }) {
       <div className="w-full max-w-md">
         {/* Logo Section */}
         <div className="text-center mb-8">
-          <div className="text-5xl mb-4">🏥</div>
+          <div className="flex justify-center mb-4">
+            <div className="rounded-2xl bg-white p-3 shadow-lg ring-1 ring-white/20">
+              <BrandLogo className="h-16 w-16 sm:h-20 sm:w-20" />
+            </div>
+          </div>
           <h1 className="text-4xl font-bold text-white mb-2">CareBridge AI</h1>
           <p className="text-slate-300">Hospital-Grade Discharge Orchestration</p>
         </div>
@@ -107,6 +136,7 @@ export default function Auth({ onLogin }) {
                 placeholder="••••••••"
                 className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                 required
+                minLength={isLogin ? 1 : 6}
               />
             </div>
 

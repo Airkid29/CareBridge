@@ -1,0 +1,27 @@
+services:
+  # --- Backend (Docker) ---
+  - type: web
+    name: carebridge-backend
+    env: docker
+    plan: free            # gratuit
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GEMINI_API_KEY
+        fromSecret: gemini-api-key   # à créer dans Render → Secrets
+      - key: JWT_SECRET
+        fromSecret: jwt-secret
+      - key: PORT
+        value: 8000
+
+  # --- Frontend (site statique) ---
+  - type: static
+    name: carebridge-frontend
+    plan: free
+    # Le frontend sera construit depuis le sous-dossier
+    buildCommand: npm install && npm run build
+    publishDir: ./frontend/carebridge-ui/build
+    envVars:
+      # L'URL du backend sera connue après son déploiement ;
+      # on la met ici puis on redéploi le frontend si besoin.
+      - key: REACT_APP_API_URL
+        value: https://carebridge-backend.onrender.com

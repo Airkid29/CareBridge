@@ -1,14 +1,17 @@
 // frontend/src/App.jsx
 import { useState, useEffect } from 'react'
 import axios from 'axios'
+import { API_BASE_URL } from './apiConfig'
 import PatientCard from './components/PatientCard'
 import AlertsList from './components/AlertsList'
 import DischargePlan from './components/DischargePlan'
 import MetricsChart from './components/MetricsChart'
 import Auth from './components/Auth'
 import AdminDashboard from './components/AdminDashboard'
+import InnovationHub from './components/InnovationHub'
+import BrandLogo from './components/BrandLogo'
 
-const API = 'http://localhost:8000'
+const API = API_BASE_URL
 
 const initialSteps = [
   { title: 'Load patient', description: 'Fetch FHIR demo record', status: 'ready' },
@@ -21,7 +24,8 @@ const onboardingSteps = [
   {
     title: 'Welcome to CareBridge AI',
     description: 'Your AI-powered discharge orchestration platform for safe hospital transitions.',
-    icon: '🏥'
+    icon: '🏥',
+    brandLogo: true,
   },
   {
     title: 'Load or Create Patient',
@@ -86,18 +90,39 @@ export default function App() {
   })
 
   useEffect(() => {
-    // Check for stored token on mount
-    const storedToken = localStorage.getItem('carebridge-token')
-    const storedUser = localStorage.getItem('carebridge-user')
-    if (storedToken && storedUser) {
-      setToken(storedToken)
-      setUser(JSON.parse(storedUser))
-      setIsAuthenticated(true)
-    }
-    
     const hasSeenOnboarding = localStorage.getItem('carebridge-onboarding-seen')
     if (hasSeenOnboarding) {
       setShowOnboarding(false)
+    }
+
+    const storedToken = localStorage.getItem('carebridge-token')
+    const storedUser = localStorage.getItem('carebridge-user')
+    if (!storedToken || !storedUser) {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        await axios.get(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        })
+        if (cancelled) return
+        setToken(storedToken)
+        setUser(JSON.parse(storedUser))
+        setIsAuthenticated(true)
+      } catch {
+        if (cancelled) return
+        localStorage.removeItem('carebridge-token')
+        localStorage.removeItem('carebridge-user')
+        setToken(null)
+        setUser(null)
+        setIsAuthenticated(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -263,92 +288,26 @@ export default function App() {
     localStorage.setItem('carebridge-onboarding-seen', 'true')
   }
 
-   // If not authenticated, show auth screen
-   if (!isAuthenticated) {
-     return <Auth onLogin={handleLogin} />
-   }
+  // If not authenticated, show auth screen
+  if (!isAuthenticated) {
+    return <Auth onLogin={handleLogin} />
+  }
 
-   // If admin, show admin dashboard
-   if (user?.role === 'admin') {
-     return (
-       <div>
-         <AdminDashboard token={token} user={user} />
-         <div className="fixed bottom-4 right-4">
-           <button
-             onClick={handleLogout}
-             className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
-           >
-             Logout
-           </button>
-         </div>
-       </div>
-     )
-   }
-
-   // Clinician/Staff dashboard
-   return (
-     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-       <div className="max-w-2xl w-full bg-white rounded-3xl shadow-lg p-8">
-         <div className="text-center mb-8">
-           <div className="text-6xl mb-4">{onboardingSteps[onboardingIndex].icon}</div>
-           <h1 className="text-3xl font-bold text-slate-900 mb-2">{onboardingSteps[onboardingIndex].title}</h1>
-           <p className="text-slate-600">{onboardingSteps[onboardingIndex].description}</p>
-         </div>
-
-         <div className="flex justify-between items-center mb-6">
-           <div className="flex space-x-2">
-             {onboardingSteps.map((_, index) => (
-               <div
-                 key={index}
-                 className={`h-2 w-8 rounded-full ${index <= onboardingIndex ? 'bg-blue-500' : 'bg-slate-200'}`}
-               />
-             ))}
-           </div>
-           <span className="text-sm text-slate-500">{onboardingIndex + 1} of {onboardingSteps.length}</span>
-         </div>
-
-         <div className="flex justify-between">
-           <button
-             onClick={skipOnboarding}
-             className="px-6 py-2 text-slate-600 hover:text-slate-800"
-           >
-             Skip
-           </button>
-           <button
-             onClick={nextOnboarding}
-             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-           >
-             {onboardingIndex === onboardingSteps.length - 1 ? 'Get Started' : 'Next'}
-           </button>
-         </div>
-       </div>
-     </div>
-   )
- }
-
-  // If admin, show admin dashboard
-  if (user?.role === 'admin') {
+  // Show onboarding if needed
+  if (showOnboarding) {
     return (
-      <div>
-        <AdminDashboard token={token} user={user} />
-        <div className="fixed bottom-4 right-4">
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition shadow-lg"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-     )
-   }
-   
-   // Clinician/Staff dashboard
-   return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-2xl w-full bg-white rounded-3xl shadow-lg p-8">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4">{onboardingSteps[onboardingIndex].icon}</div>
+            <div className="mb-4 flex justify-center">
+              {onboardingSteps[onboardingIndex].brandLogo ? (
+                <div className="rounded-2xl bg-slate-100 p-4 ring-1 ring-slate-200/80 shadow-inner">
+                  <BrandLogo className="h-20 w-20 sm:h-24 sm:w-24" />
+                </div>
+              ) : (
+                <div className="text-6xl">{onboardingSteps[onboardingIndex].icon}</div>
+              )}
+            </div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">{onboardingSteps[onboardingIndex].title}</h1>
             <p className="text-slate-600">{onboardingSteps[onboardingIndex].description}</p>
           </div>
@@ -384,14 +343,37 @@ export default function App() {
     )
   }
 
+  // If admin, show admin dashboard
+  if (user?.role === 'admin') {
+    return (
+      <div>
+        <AdminDashboard token={token} user={user} />
+        <div className="fixed bottom-4 right-4">
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition shadow-lg"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Clinician/Staff dashboard
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="bg-slate-900 text-white border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">St. Mary's Health Network</p>
-            <h1 className="text-3xl font-semibold tracking-tight">CareBridge AI</h1>
-            <p className="mt-1 text-slate-300">Clinical discharge orchestration for safe hospital transitions.</p>
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 rounded-xl bg-white p-1.5 sm:p-2 ring-1 ring-slate-600/60 shadow-md">
+              <BrandLogo className="h-10 w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">St. Mary's Health Network</p>
+              <h1 className="text-3xl font-semibold tracking-tight">CareBridge AI</h1>
+              <p className="mt-1 text-slate-300">Clinical discharge orchestration for safe hospital transitions.</p>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
             <div className="rounded-2xl bg-slate-800 px-4 py-3">
@@ -424,7 +406,7 @@ export default function App() {
           <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
           <div className="text-sm">
             <span className="font-semibold text-emerald-800">System Online</span>
-            <span className="text-emerald-600 ml-2">Connected to Epic EHR • FHIR R4 API • Gemini AI Model</span>
+            <span className="text-emerald-600 ml-2">Epic EHR · FHIR R4 · Gemini · Transition DNA · Copilot · Voice Pack · FHIR bundles</span>
           </div>
         </div>
 
@@ -433,6 +415,18 @@ export default function App() {
             <strong>Error:</strong> {error}
           </div>
         )}
+
+        <InnovationHub
+          apiBase={API}
+          getHeaders={getHeaders}
+          patient={patient}
+          result={result}
+          onActivity={(message) => {
+            setError(null)
+            logEvent(message)
+          }}
+          onError={setError}
+        />
 
         <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
           <div className="space-y-6">
